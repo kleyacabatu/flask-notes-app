@@ -1,6 +1,7 @@
 import datetime
 import hashlib
 from flask import Flask, render_template, redirect, url_for, request
+from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
@@ -16,15 +17,15 @@ class Notebook(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), default="My Notebook")
     password = db.Column(db.String(100), default=None)
-    last_modified = db.Column(db.DateTime, default=datetime.datetime.today())
-
+    last_modified = db.Column(db.DateTime, default=datetime.today)
+    tags = db.relationship('Tag', backref='notebook', lazy=True)
 
 class Notes(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(25), default="New Note")
     content = db.Column(db.Text, default=" ")
     notes_notebook = db.Column(db.Integer, nullable=False)
-    last_modified = db.Column(db.DateTime, default=datetime.datetime.today())
+    last_modified = db.Column(db.DateTime, default=datetime.today)
     font = db.Column(db.String(25))
     color = db.Column(db.String(6))
 
@@ -35,6 +36,12 @@ class Section(db.Model):
     content = db.Column(db.Text, default=" ")
     note_id = db.Column(db.Integer, nullable=False)
 
+class Tag(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)
+    
+    # Foreign key to Notebook
+    notebook_id = db.Column(db.Integer, db.ForeignKey('notebook.id'), nullable=False)
 
 @app.route("/")
 def redirect_to_home():
@@ -227,5 +234,6 @@ def delete_section(notebook_id, note_id, section_id):
     return render_template("delete_section.html", notebook=notebook_id, note=note_id, section=Section.query.get(section_id))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
+    db.create_all()
     app.run(debug=True)
