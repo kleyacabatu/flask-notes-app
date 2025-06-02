@@ -3,6 +3,7 @@ import hashlib
 from flask import Flask, render_template, redirect, url_for, request
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
+from flask import jsonify, request
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
@@ -12,13 +13,19 @@ db = SQLAlchemy(app)
 global auth
 auth = [False]
 
+note_tag = db.Table('note_tag',
+    db.Column('notebook_id', db.Integer, db.ForeignKey('notebook.id'), primary_key=True),
+    db.Column('tag_id', db.Integer, db.ForeignKey('tag.id'), primary_key=True)
+)
 
 class Notebook(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), default="My Notebook")
     password = db.Column(db.String(100), default=None)
     last_modified = db.Column(db.DateTime, default=datetime.today)
-    tags = db.relationship('Tag', backref='notebook', lazy=True)
+    
+    tags = db.relationship('Tag', back_populates='notebook', cascade='all, delete-orphan')
+
 
 class Notes(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -39,9 +46,9 @@ class Section(db.Model):
 class Tag(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
-    
-    # Foreign key to Notebook
+
     notebook_id = db.Column(db.Integer, db.ForeignKey('notebook.id'), nullable=False)
+    notebook = db.relationship('Notebook', back_populates='tags')
 
 @app.route("/")
 def redirect_to_home():
@@ -233,6 +240,63 @@ def delete_section(notebook_id, note_id, section_id):
 
     return render_template("delete_section.html", notebook=notebook_id, note=note_id, section=Section.query.get(section_id))
 
+
+# Create a new tag
+@app.route('/api/tags', methods=['POST'])
+def create_tag():
+    data = request.get_json()
+    if not data or 'name' not in data or not data['name'].strip():
+        return jsonify({'error': 'Tag name is required'}), 400
+    if 'notebook_id' not in data:
+        return jsonify({'error': 'Notebook ID is required'}), 400
+
+    new_tag = Tag(name=data['name'].strip(), notebook_id=data['notebook_id'])
+    db.session.add(new_tag)
+    db.session.commit()
+    return jsonify({
+        'id': new_tag.id,
+        'name': new_tag.name,
+        'notebook_id': new_tag.notebook_id
+    }), 201
+
+# Get all tags
+@app.route('/api/tags', methods=['GET'])
+def get_tags():
+    tags = Tag.query.all()
+    return jsonify([{'id': tag.id, 'name': tag.name} for tag in tags]), 200  # OK
+
+# Get tag by ID
+@app.route('/api/tags/<int:tag_id>', methods=['GET'])
+def get_tag(tag_id):
+    tag = Tag.query.get_or_404(tag_id, description=f'Tag with id {tag_id} not found')
+    return jsonify({'id': tag.id, 'name': tag.name}), 200  # OK
+
+# Update tag
+@app.route('/api/tags/<int:tag_id>', methods=['PUT'])
+def update_tag(tag_id):
+    data = request.get_json()
+    if not data or 'name' not in data or not data['name'].strip():
+        return jsonify({'error': 'Tag name is required'}), 400  # Validate input
+    tag = Tag.query.get_or_404(tag_id, description=f'Tag with id {tag_id} not found')
+    tag.name = data['name'].strip()
+    db.session.commit()
+    return jsonify({'id': tag.id, 'name': tag.name}), 200  # OK
+
+# Delete tag
+@app.route('/api/tags/<int:tag_id>', methods=['DELETE'])
+def delete_tag(tag_id):
+    tag = Tag.query.get_or_404(tag_id, description=f'Tag with id {tag_id} not found')
+    db.session.delete(tag)
+    db.session.commit()
+    return jsonify({'message': 'Tag deleted'}), 200  # OK
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': error.description or 'Not found'}), 404
+
+@app.errorhandler(400)
+def bad_request(error):
+    return jsonify({'error': 'Bad request'}), 400
 
 if __name__ == '__main__':
     db.create_all()
