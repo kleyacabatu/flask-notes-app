@@ -263,32 +263,62 @@ def create_tag():
 @app.route('/api/tags', methods=['GET'])
 def get_tags():
     tags = Tag.query.all()
-    return jsonify([{'id': tag.id, 'name': tag.name} for tag in tags]), 200  # OK
+    return jsonify([
+        {
+            'id': tag.id,
+            'name': tag.name,
+            'notebook_id': tag.notebook_id
+        } for tag in tags
+    ]), 200
 
 # Get tag by ID
 @app.route('/api/tags/<int:tag_id>', methods=['GET'])
 def get_tag(tag_id):
-    tag = Tag.query.get_or_404(tag_id, description=f'Tag with id {tag_id} not found')
-    return jsonify({'id': tag.id, 'name': tag.name}), 200  # OK
+    tag = Tag.query.get(tag_id)
+    if not tag:
+        return jsonify({'error': 'Tag not found'}), 404
+    return jsonify({
+        'id': tag.id,
+        'name': tag.name,
+        'notebook_id': tag.notebook_id
+    }), 200 
 
 # Update tag
 @app.route('/api/tags/<int:tag_id>', methods=['PUT'])
 def update_tag(tag_id):
     data = request.get_json()
-    if not data or 'name' not in data or not data['name'].strip():
-        return jsonify({'error': 'Tag name is required'}), 400  # Validate input
-    tag = Tag.query.get_or_404(tag_id, description=f'Tag with id {tag_id} not found')
-    tag.name = data['name'].strip()
-    db.session.commit()
-    return jsonify({'id': tag.id, 'name': tag.name}), 200  # OK
+    tag = Tag.query.get(tag_id)
+    if not tag:
+        return jsonify({'error': 'Tag not found'}), 404
 
-# Delete tag
+    if not data or 'name' not in data or not data['name'].strip():
+        return jsonify({'error': 'Tag name is required'}), 400
+
+    tag.name = data['name'].strip()
+
+    # Optional: Allow updating the notebook_id too
+    if 'notebook_id' in data:
+        tag.notebook_id = data['notebook_id']
+
+    db.session.commit()
+
+    return jsonify({
+        'id': tag.id,
+        'name': tag.name,
+        'notebook_id': tag.notebook_id
+    }), 200
+
+#Delete tag by ID
 @app.route('/api/tags/<int:tag_id>', methods=['DELETE'])
 def delete_tag(tag_id):
-    tag = Tag.query.get_or_404(tag_id, description=f'Tag with id {tag_id} not found')
+    tag = Tag.query.get(tag_id)
+    if not tag:
+        return jsonify({'error': 'Tag not found'}), 404
+
     db.session.delete(tag)
     db.session.commit()
-    return jsonify({'message': 'Tag deleted'}), 200  # OK
+    return jsonify({'message': f'Tag {tag.id} deleted'}), 200
+
 
 @app.errorhandler(404)
 def not_found(error):
